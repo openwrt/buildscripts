@@ -4,7 +4,6 @@
 #U="https://downloads.openwrt.org/barrier_breaker/14.07"
 U="file:///BB/sync/barrier_breaker/14.07"
 R="user@remote:/foo/barrier_breaker/14.07"
-T="$(pwd)"
 
 tmp="/home/jow/.relman"
 
@@ -126,27 +125,7 @@ fetch_remote_sdk() {
 	done
 }
 
-sdk_target() {
-	sed -ne 's,^CONFIG_TARGET_BOARD="\(.*\)",\1,p' "$T/.config"
-}
-
-sdk_subtarget() {
-	local mk target subtarget
-	for mk in "$T/target/linux"/*/*/target.mk; do
-		mk="${mk#*/target/linux/}"
-		target="${mk%/*/target.mk}"
-		subtarget="${mk#$target/}"
-		subtarget="${subtarget%/target.mk}"
-
-		if grep -qE "^CONFIG_TARGET_${target}_${subtarget}=y\$" "$T/.config"; then
-			echo "$subtarget"
-			return 0
-		fi
-	done
-	return 1
-}
-
-sdk_prepare() {
+prepare_sdk() {
 	local target="$1"
 
 	if [ ! -d "$tmp/sdk/$target/.git" ]; then
@@ -181,7 +160,7 @@ sdk_prepare() {
 	fi
 }
 
-sdk_feed_install() {
+install_sdk_feeds() {
 	local pkg feed target="$1"; shift
 
 	echo " * [$slot:$target] Installing packages"
@@ -204,7 +183,7 @@ sdk_feed_install() {
 	) 9>"$tmp/feeds.lock" 2>/dev/null >/dev/null
 }
 
-sdk_pkg_compile() {
+compile_sdk_packages() {
 	local pkg target="$1"; shift
 
 	echo " * [$slot:$target] Compiling packages"
@@ -261,7 +240,7 @@ find_local_pkg_feed() {
 	return 1
 }
 
-index_patch_cmd() {
+patch_index_cmd() {
 	local target="$1" feed="$2"; shift; shift
 	local idir="$tmp/repo-remote/$target/packages/$feed"
 	local odir="$tmp/repo-local/$target/packages/$feed"
@@ -276,18 +255,18 @@ index_patch_cmd() {
 	mv "$odir/Packages.$$" "$odir/Packages"
 }
 
-index_patch() {
+patch_indexes() {
 	local target="$1" feed pkg dir; shift
 
 	echo " * [$slot:$target] Patching repository index"
 
 	for pkg in "$@"; do
 		feed="$(find_remote_pkg_feed "$target" "$pkg")"
-		[ -n "$feed" ] && index_patch_cmd "$target" "$feed" \
+		[ -n "$feed" ] && patch_index_cmd "$target" "$feed" \
 			--remove "${pkg%%:*}"
 
 		feed="$(find_local_pkg_feed "$target" "$pkg")"
-		[ -n "$feed" ] && index_patch_cmd "$target" "$feed" \
+		[ -n "$feed" ] && patch_index_cmd "$target" "$feed" \
 			--add "$tmp/repo-local/$target/packages/$feed/${pkg%%:*}"_*.ipk
 	done
 
@@ -299,7 +278,7 @@ index_patch() {
 	done < "$tmp/feeds.lst"
 }
 
-file_rsync() {
+rsync_files() {
 	local target="$1" pkg path; shift
 
 	echo " * [$slot:$target] Syncing files"
@@ -327,17 +306,17 @@ run_jobs() {
 		count=1; for target in $targets; do
 			if [ $((count++ % $num_jobs)) -eq $slot ]; then
 				if [ $do_compile -gt 0 ]; then
-					sdk_prepare "$target"
-					sdk_feed_install "$target" "$@"
-					sdk_pkg_compile "$target" "$@"
+					prepare_sdk "$target"
+					install_sdk_feeds "$target" "$@"
+					compile_sdk_packages "$target" "$@"
 				fi
 
 				if [ $do_index -gt 0 ]; then
-					index_patch "$target" "$@"
+					patch_indexes "$target" "$@"
 				fi
 
 				if [ $do_rsync -gt 0 ]; then
-					file_rsync "$target" "$@"
+					rsync_files "$target" "$@"
 				fi
 			fi
 		done
