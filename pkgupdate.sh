@@ -298,7 +298,7 @@ rsync_files() {
 
 run_jobs() {
 	local targets=$(fetch_remote_targets)
-	local target slot count
+	local target slot count job
 
 	#echo "* Compiling packages"
 
@@ -321,6 +321,11 @@ run_jobs() {
 			fi
 		done
 	) & done
+
+	for job in $(jobs -p); do
+		wait "$job"
+		echo "* Job $job completed"
+	done
 }
 
 trap terminate INT TERM
