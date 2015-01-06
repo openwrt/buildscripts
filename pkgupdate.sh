@@ -1,10 +1,12 @@
 #!/bin/bash
 
 
-#U="https://downloads.openwrt.org/barrier_breaker/14.07"
-U="file:///BB/sync/barrier_breaker/14.07"
-R="openwrt@downloads.openwrt.org:barrier_breaker/14.07"
-I="/home/jow/.ssh/id_rsa_openwrt_rsync"
+#DL_URL="https://downloads.openwrt.org/barrier_breaker/14.07"
+#DL_URL="file:///BB/sync/barrier_breaker/14.07"
+DL_URL="openwrt@downloads.openwrt.org:barrier_breaker/14.07"
+UL_URL="openwrt@downloads.openwrt.org:barrier_breaker/14.07"
+
+IDENT="/home/jow/.ssh/id_rsa_openwrt_rsync"
 
 N="
 "
@@ -14,7 +16,16 @@ tmp="/home/jow/relman/.cache"
 mkdir -p "$tmp"
 
 call_rsync() {
-	LC_ALL=C rsync ${I+-e "ssh -i $I"} "$@"
+	LC_ALL=C rsync ${IDENT+-e "ssh -i $IDENT"} "$@"
+}
+
+cache_rsync_files() {
+	if [ ! -d "$tmp/rsync" ] || [ $do_update -gt 0 -a ! -e "$tmp/.rsync-updated" ]; then
+		mkdir -p "$tmp/rsync"
+		touch "$tmp/.rsync-updated"
+		call_rsync -avz --delete -m --include='*/' --include='**/Packages.gz' --include='**/OpenWrt-SDK-*.tar.bz2' --exclude='*' \
+			"$DL_URL/" "$tmp/rsync/" >/dev/null 2>/dev/null
+	fi
 }
 
 terminate() {
@@ -27,39 +38,68 @@ terminate() {
 }
 
 fetch_remote() {
-	if [ -f "${1#file:}" ]; then
-		cat "${1#file:}"
-	else
-		wget -qO- "$1"
-	fi
+	case "$1" in
+		file:*)
+			cat "${1#file:}"
+		;;
+		http:*|https:*|ftp:*)
+			wget -qO- "$1"
+		;;
+		*)
+			cache_rsync_files
+			cat "$tmp/rsync${1#$DL_URL}"
+		;;
+	esac
 }
 
 fetch_remote_dirlist() {
 	local entry
 
-	if [ -d "${1#file:}" ]; then
-		/bin/ls -1 "${1#file:}" | while read entry; do
-			if [ -d "${1#file:}/$entry" ]; then
-				echo "$entry"
-			fi
-		done
-	else
-		wget -qO- "$1" | sed -ne 's,^<a href="\(.\+\)/".\+$,\1,p'
-	fi
+	case "$1" in
+		file:*)
+			/bin/ls -1 "${1#file:}" | while read entry; do
+				if [ -d "${1#file:}/$entry" ]; then
+					echo "$entry"
+				fi
+			done
+		;;
+		http:*|https:*|ftp:*)
+			wget -qO- "$1" | sed -ne 's,^<a href="\(.\+\)/".\+$,\1,p'
+		;;
+		*)
+			cache_rsync_files
+			/bin/ls -1 "$tmp/rsync${1#$DL_URL}" | while read entry; do
+				if [ -d "$tmp/rsync${1#$DL_URL}/$entry" ]; then
+					echo "$entry"
+				fi
+			done
+		;;
+	esac
 }
 
 fetch_remote_filelist() {
 	local entry
 
-	if [ -d "${1#file:}" ]; then
-		/bin/ls -1 "${1#file:}" | while read entry; do
-			if [ -f "${1#file:}/$entry" ]; then
-				echo "$entry"
-			fi
-		done
-	else
-		wget -qO- "$1" | sed -ne 's,^<a href="\(.\+[^/]\)".\+$,\1,p'
-	fi
+	case "$1" in
+		file:*)
+			/bin/ls -1 "${1#file:}" | while read entry; do
+				if [ -f "${1#file:}/$entry" ]; then
+					echo "$entry"
+				fi
+			done
+		;;
+		http:*|https:*|ftp:*)
+			wget -qO- "$1" | sed -ne 's,^<a href="\(.\+[^/]\)".\+$,\1,p'
+		;;
+		*)
+			cache_rsync_files
+			/bin/ls -1 "$tmp/rsync${1#$DL_URL}" | while read entry; do
+				if [ -f "$tmp/rsync${1#$DL_URL}/$entry" ]; then
+					echo "$entry"
+				fi
+			done
+		;;
+	esac
 }
 
 fetch_remote_targets() {
@@ -73,9 +113,9 @@ fetch_remote_targets() {
 	fi
 
 	if [ ! -s "$tmp/targets.lst" ]; then
-		fetch_remote_dirlist "$U" | while read target; do
+		fetch_remote_dirlist "$DL_URL" | while read target; do
 			[ "$target" = "logs" ] && continue
-			fetch_remote_dirlist "$U/$target" | while read subtarget; do
+			fetch_remote_dirlist "$DL_URL/$target" | while read subtarget; do
 				echo "$target/$subtarget" >> "$tmp/targets.lst"
 			done
 		done
@@ -90,7 +130,7 @@ fetch_remote_feeds() {
 
 	if [ ! -s "$tmp/feeds.lst" ]; then
 		fetch_remote_targets | while read target; do
-			fetch_remote_dirlist "$U/$target/packages" > "$tmp/feeds.lst"
+			fetch_remote_dirlist "$DL_URL/$target/packages" > "$tmp/feeds.lst"
 			break
 		done
 	fi
@@ -109,7 +149,7 @@ fetch_remote_index() {
 			if [ ! -s "$tmp/repo-remote/$target/packages/$feed/Packages.gz" ]; then
 				echo " * $target $feed"
 				mkdir -p "$tmp/repo-remote/$target/packages/$feed"
-				fetch_remote "$U/$target/packages/$feed/Packages.gz" \
+				fetch_remote "$DL_URL/$target/packages/$feed/Packages.gz" \
 					> "$tmp/repo-remote/$target/packages/$feed/Packages.gz"
 			fi
 		done
@@ -120,11 +160,11 @@ fetch_remote_sdk() {
 	local target="$1" sdk
 
 	if [ ! -s "$tmp/repo-remote/$target/sdk.tar.bz2" ]; then
-		fetch_remote_filelist "$U/$target" | while read sdk; do
+		fetch_remote_filelist "$DL_URL/$target" | while read sdk; do
 			case "$sdk" in OpenWrt-SDK-*.tar.bz2)
 				echo " * [$slot:$target] Fetching $sdk"
 				mkdir -p "$tmp/repo-remote/$target"
-				fetch_remote "$U/$target/$sdk" > "$tmp/repo-remote/$target/sdk.tar.bz2"
+				fetch_remote "$DL_URL/$target/$sdk" > "$tmp/repo-remote/$target/sdk.tar.bz2"
 			;; esac
 		done
 	fi
@@ -364,7 +404,7 @@ rsync_delete_remote() {
 
 		if [ -n "$include" ]; then
 			mkdir -p "$tmp/empty"
-			call_rsync -rv --delete $include --exclude="*" "$tmp/empty/" "$R/$target/packages/$feed/" 2>&1 | \
+			call_rsync -rv --delete $include --exclude="*" "$tmp/empty/" "$UL_URL/$target/packages/$feed/" 2>&1 | \
 				grep "deleting " | while read line; do
 					echo " * [$slot:$target] rsync: $line"
 				done
@@ -378,7 +418,7 @@ rsync_files() {
 	echo " * [$slot:$target] Syncing files"
 
 	rsync_delete_remote "$target" "$@"
-	call_rsync -rv "$tmp/repo-local/$target/packages/" "$R/$target/packages/" 2>&1 | \
+	call_rsync -rv "$tmp/repo-local/$target/packages/" "$UL_URL/$target/packages/" 2>&1 | \
 		grep "/" | while read line; do
 			echo " * [$slot:$target] rsync: $line"
 		done
@@ -502,7 +542,7 @@ fi
 
 if [ $do_update -gt 0 ] || [ ! -s "$tmp/targets.lst" ]; then
 	echo "* Preparing metadata"
-	rm -f "$tmp/targets.lst" "$tmp/feeds.lst"
+	rm -f "$tmp/targets.lst" "$tmp/feeds.lst" "$tmp/.rsync-updated"
 	rm -rf "$tmp/repo-remote"/*/*/packages
 	fetch_remote_index >/dev/null
 fi
