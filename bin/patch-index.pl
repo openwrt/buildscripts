@@ -88,6 +88,7 @@ sub pkg_metadata
 
 	# Fix up source
 	$meta =~ s!^Source: .+/(feeds/.+)$!Source: $1!m;
+	$meta =~ s!^Source: feeds/base/!Source: !m;
 
 	return $meta;
 }
