@@ -3,11 +3,19 @@
 
 #U="https://downloads.openwrt.org/barrier_breaker/14.07"
 U="file:///BB/sync/barrier_breaker/14.07"
-R="user@remote:/foo/barrier_breaker/14.07"
+R="openwrt@downloads.openwrt.org:barrier_breaker/14.07"
+I="/home/jow/.ssh/id_rsa_openwrt_rsync"
 
-tmp="/home/jow/.relman"
+N="
+"
+
+tmp="/home/jow/relman/.cache"
 
 mkdir -p "$tmp"
+
+call_rsync() {
+	LC_ALL=C rsync ${I+-e "ssh -i $I"} "$@"
+}
 
 terminate() {
 	local jobs="$(jobs -p)"
@@ -101,28 +109,25 @@ fetch_remote_index() {
 			if [ ! -s "$tmp/repo-remote/$target/packages/$feed/Packages.gz" ]; then
 				echo " * $target $feed"
 				mkdir -p "$tmp/repo-remote/$target/packages/$feed"
-				wget -qO "$tmp/repo-remote/$target/packages/$feed/Packages.gz" "$U/$target/packages/$feed/Packages.gz"
+				fetch_remote "$U/$target/packages/$feed/Packages.gz" \
+					> "$tmp/repo-remote/$target/packages/$feed/Packages.gz"
 			fi
 		done
 	done
 }
 
 fetch_remote_sdk() {
-	local target sdk
+	local target="$1" sdk
 
-	echo "Fetching remote SDKs..."
-
-	fetch_remote_targets | while read target; do
-		if [ ! -s "$tmp/repo-remote/$target/sdk.tar.bz2" ]; then
-			fetch_remote_filelist "$U/$target" | while read sdk; do
-				case "$sdk" in OpenWrt-SDK-*.tar.bz2)
-					echo " * $target $sdk"
-					mkdir -p "$tmp/repo-remote/$target"
-					fetch_remote "$U/$target/$sdk" > "$tmp/repo-remote/$target/sdk.tar.bz2"
-				;; esac
-			done
-		fi
-	done
+	if [ ! -s "$tmp/repo-remote/$target/sdk.tar.bz2" ]; then
+		fetch_remote_filelist "$U/$target" | while read sdk; do
+			case "$sdk" in OpenWrt-SDK-*.tar.bz2)
+				echo " * [$slot:$target] Fetching $sdk"
+				mkdir -p "$tmp/repo-remote/$target"
+				fetch_remote "$U/$target/$sdk" > "$tmp/repo-remote/$target/sdk.tar.bz2"
+			;; esac
+		done
+	fi
 }
 
 prepare_sdk() {
@@ -130,6 +135,8 @@ prepare_sdk() {
 
 	if [ ! -d "$tmp/sdk/$target/.git" ]; then
 		echo " * [$slot:$target] Initializing SDK"
+
+		fetch_remote_sdk "$target"
 
 		rm -rf "$tmp/sdk/$target"
 		mkdir -p "$tmp/sdk/$target"
@@ -149,7 +156,7 @@ prepare_sdk() {
 			find . -maxdepth 1 | xargs git add
 			git commit -m "Snapshot"
 		) >/dev/null
-	else
+	elif [ $do_clean -gt 0 ]; then
 		echo " * [$slot:$target] Resetting SDK"
 
 		(
@@ -160,56 +167,116 @@ prepare_sdk() {
 	fi
 }
 
+find_pkg_dependant_sources() {
+	local pkg
+
+	find_pkg_dependant_ipks "$@" | while read pkg; do
+		sed -ne "s!^package-\$(CONFIG_PACKAGE_${pkg}) += .\+/!!p" "$tmp/sdk/$target/tmp/.packagedeps"
+	done | sort -u
+}
+
+find_pkg_dependant_ipks() {
+	local target="$1" pkg="$2" deps="" dep
+
+	if [ $do_dependants -gt 0 ]; then
+		for dep in $(zcat "$tmp/repo-remote/$target/packages"/*/Packages.gz | \
+			grep -B2 -E "^Depends:.* ${pkg%%:*}(,|\$)" | sed -ne 's!^Package: !!p'); do
+			deps="$deps$N$dep"
+		done
+	fi
+
+	echo "${pkg%%:*}$deps" | sort -u
+}
+
+find_source_provided_pkgs() {
+	local pkg="$1"
+
+	find "$tmp/repo-remote/" -name Packages.gz | xargs zcat | \
+		grep -B3 -E "^Source: (.+/)?$pkg\$" | sed -ne 's!^Package: !!p' | \
+		sort -u
+}
+
 install_sdk_feeds() {
 	local pkg feed target="$1"; shift
 
 	echo " * [$slot:$target] Installing packages"
 
 	(
-		flock -x 9
+		flock -x 8
 
 		cd "$tmp/sdk/$target"
 
-		./scripts/feeds update
+		if [ ! -s "feeds.conf" ]; then
+			if ! grep -sq " base " "feeds.conf.default"; then
+				sed -e '/oldpackages/ { p; s!oldpackages!base!; s!packages.git!openwrt.git! }' \
+					feeds.conf.default > feeds.conf
+			else
+				cp feeds.conf.default feeds.conf
+			fi
+		fi
 
+		./scripts/feeds update >/dev/null
+
+		echo " * [$slot:$target] feeds install"
 		for pkg in "$@"; do
 			case "$pkg" in
 				*:*) feed="${pkg#*:}"; pkg="${pkg%%:*}" ;;
 				*) feed="" ;;
 			esac
 
-			./scripts/feeds install -d m${feed:+ -p "$feed"} "$pkg"
-		done
-	) 9>"$tmp/feeds.lock" 2>/dev/null >/dev/null
+			find_pkg_dependant_ipks "$target" "$pkg" | while read pkg; do
+				#echo " * [$slot:$target] feeds install $pkg"
+				#./scripts/feeds install ${feed:+ -p "$feed"} "$pkg" >/dev/null
+				echo "$pkg"
+			done
+		done | sort -u | xargs ./scripts/feeds install >/dev/null
+
+		sed -i -e "/CONFIG_PACKAGE_/d" .config
+		echo "CONFIG_ALL=y" >> .config
+		make defconfig >/dev/null
+	) 8>"$tmp/feeds.lock" 2>/dev/null
 }
 
 compile_sdk_packages() {
-	local pkg target="$1"; shift
+	local pkg feed target="$1"; shift
 
 	echo " * [$slot:$target] Compiling packages"
 
 	for pkg in "$@"; do
-		(cd "$tmp/sdk/$target"; make "package/${pkg%%:*}/compile") >/dev/null
+		find_pkg_dependant_sources "$target" "$pkg"
+	done | sort -u | while read pkg; do
+		echo " * [$slot:$target] make package/$pkg/download"
+		(
+			flock -x 9
 
-		mkdir -p "$tmp/repo-local/$target/packages"
-		cp -a "$tmp/sdk/$target/bin"/*/packages/* "$tmp/repo-local/$target/packages/"
+			cd "$tmp/sdk/$target"
+			if ! make "package/$pkg/download" >/dev/null 2>/dev/null; then
+				echo " * [$slot:$target] make package/$pkg/download - FAILED!"
+			fi
+		) 9>"$tmp/download.lock" 2>/dev/null
+
+		echo " * [$slot:$target] make package/$pkg/compile"
+		(
+			cd "$tmp/sdk/$target"
+			if ! make "package/$pkg/compile" IGNORE_ERRORS=y >/dev/null 2>/dev/null; then
+				echo " * [$slot:$target] make package/$pkg/compile - FAILED!"
+			fi
+		)
 	done
-}
 
-find_remote_pkg_name() {
-	local feed name target="$1" pkg="$2"
-
-	while read feed; do
-		name="$(zcat "$tmp/repo-remote/$target/packages/$feed/Packages.gz" | \
-			sed -ne "s/Filename: \\(${pkg%%:*}_.\\+\\.ipk\\)\$/\1/p")"
-
-		if [ -n "$name" ]; then
-			echo "$target/packages/$feed/$name"
-			return 0
-		fi
-	done < "$tmp/feeds.lst"
-
-	return 1
+	for pkg in "$@"; do
+		find_pkg_dependant_ipks "$target" "$pkg"
+	done | sort -u | while read pkg; do
+		for pkg in "$tmp/sdk/$target/bin"/*/packages/*/"${pkg}"_[^_]*_[^_]*.ipk; do
+			if [ -s "$pkg" ]; then
+				feed="${pkg%/*}"; feed="${feed##*/}"
+				mkdir -p "$tmp/repo-local/$target/packages/$feed"
+				cp -a "$pkg" "$tmp/repo-local/$target/packages/$feed/"
+			else
+				echo " * [$slot:$target] $pkg - MISSING!"
+			fi
+		done
+	done
 }
 
 find_remote_pkg_feed() {
@@ -261,13 +328,15 @@ patch_indexes() {
 	echo " * [$slot:$target] Patching repository index"
 
 	for pkg in "$@"; do
-		feed="$(find_remote_pkg_feed "$target" "$pkg")"
-		[ -n "$feed" ] && patch_index_cmd "$target" "$feed" \
-			--remove "${pkg%%:*}"
+		find_pkg_dependant_ipks "$target" "$pkg" | while read pkg; do
+			feed="$(find_remote_pkg_feed "$target" "$pkg")"
+			[ -n "$feed" ] && patch_index_cmd "$target" "$feed" \
+				--remove "${pkg%%:*}"
 
-		feed="$(find_local_pkg_feed "$target" "$pkg")"
-		[ -n "$feed" ] && patch_index_cmd "$target" "$feed" \
-			--add "$tmp/repo-local/$target/packages/$feed/${pkg%%:*}"_*.ipk
+			feed="$(find_local_pkg_feed "$target" "$pkg")"
+			[ -n "$feed" ] && patch_index_cmd "$target" "$feed" \
+				--add "$tmp/repo-local/$target/packages/$feed/${pkg%%:*}"_*.ipk
+		done
 	done
 
 	while read feed; do
@@ -278,22 +347,41 @@ patch_indexes() {
 	done < "$tmp/feeds.lst"
 }
 
+rsync_delete_remote() {
+	local target="$1" feed name pkg dep include line; shift
+
+	while read feed; do
+		include=""
+
+		for pkg in "$@"; do
+			for dep in $(find_pkg_dependant_ipks "$target" "$pkg"); do
+				name="$(zcat "$tmp/repo-remote/$target/packages/$feed/Packages.gz" | \
+					sed -ne "s/Filename: \\(${dep%%:*}_.\\+\\.ipk\\)\$/\1/p")"
+
+				include="${include:+$include }${name:+--include=$name}"
+			done
+		done
+
+		if [ -n "$include" ]; then
+			mkdir -p "$tmp/empty"
+			call_rsync -rv --delete $include --exclude="*" "$tmp/empty/" "$R/$target/packages/$feed/" 2>&1 | \
+				grep "deleting " | while read line; do
+					echo " * [$slot:$target] rsync: $line"
+				done
+		fi
+	done < "$tmp/feeds.lst"
+}
+
 rsync_files() {
-	local target="$1" pkg path; shift
+	local target="$1" line; shift
 
 	echo " * [$slot:$target] Syncing files"
 
-	mkdir -p "$tmp/empty"
-
-	for pkg in "$@"; do
-		path="$(find_remote_pkg_name "$target" "$pkg")"
-
-		[ -n "$path" ] && echo rsync --dry-run -rv \
-			--delete="${path##*/}" --exclude="*" "$tmp/empty/" "$R/${path%/*}/"
-
-		echo rsync --dry-run -rv "$tmp/repo-local/$target/packages/" "$R/$target/packages/"
-	done
-
+	rsync_delete_remote "$target" "$@"
+	call_rsync -rv "$tmp/repo-local/$target/packages/" "$R/$target/packages/" 2>&1 | \
+		grep "/" | while read line; do
+			echo " * [$slot:$target] rsync: $line"
+		done
 }
 
 run_jobs() {
@@ -305,7 +393,7 @@ run_jobs() {
 	for slot in $(seq 0 $((num_jobs-1))); do (
 		count=1; for target in $targets; do
 			if [ $((count++ % $num_jobs)) -eq $slot ]; then
-				if [ $do_compile -gt 0 ]; then
+				if [ $do_build -gt 0 ]; then
 					prepare_sdk "$target"
 					install_sdk_feeds "$target" "$@"
 					compile_sdk_packages "$target" "$@"
@@ -330,14 +418,18 @@ run_jobs() {
 
 trap terminate INT TERM
 
-do_compile=0
+do_clean=0
+do_build=0
 do_index=0
 do_rsync=0
+do_dependants=0
+do_update=0
 
 num_jobs=$(grep processor /proc/cpuinfo | wc -l)
 
 use_targets=""
 use_packages=""
+use_sources=""
 
 usage() {
 	cat <<-EOT
@@ -347,6 +439,9 @@ $0 {-a|-c|-i|-r} [-j jobs] -p package [-p package ...]
      Perform all build steps (compile, rebuild, rsync)
 
   -c
+     Perform clean step in SDK.
+
+  -b
      Compile packages for all architectures.
 
   -i
@@ -354,6 +449,12 @@ $0 {-a|-c|-i|-r} [-j jobs] -p package [-p package ...]
 
   -r
      Rsync files for all architecures.
+
+  -d
+     Process dependant packages as well (useful for libraries)
+
+  -u
+     Update remote metadata.
 
   -j jobs
      Use the given number of jobs when compiling packages.
@@ -364,7 +465,6 @@ $0 {-a|-c|-i|-r} [-j jobs] -p package [-p package ...]
      given then prefer this feed name when installing the
      package into the SDK.
 
-
   -t target
      Restrict operation to given targets.
 
@@ -372,26 +472,48 @@ $0 {-a|-c|-i|-r} [-j jobs] -p package [-p package ...]
 	exit 1
 }
 
-while getopts ":acirp:t:" opt; do
+while getopts ":abcirduj:p:s:t:" opt; do
 	case "$opt" in
 		a)
-			do_compile=1
+			do_clean=1
+			do_build=1
 			do_index=1
 			do_rsync=1
 		;;
-		c) do_compile=1 ;;
+		c) do_clean=1 ;;
+		b) do_build=1 ;;
 		i) do_index=1 ;;
 		r) do_rsync=1 ;;
+		d) do_dependants=1 ;;
+		u) do_update=1 ;;
 		j) num_jobs="$OPTARG" ;;
 		p) use_packages="${use_packages:+$use_packages }$OPTARG" ;;
+		s) use_sources="${use_sources:+$use_sources }$OPTARG" ;;
 		t) use_targets="${use_targets:+$use_targets }$OPTARG" ;;
 	esac
 done
 
-[ -z "$use_packages" ] && usage
+[ -z "$use_packages" ] && [ -z "$use_sources" ] && [ $do_update -lt 1 ] && usage
 
-echo "* Preparing metadata"
-fetch_remote_targets >/dev/null
-fetch_remote_feeds >/dev/null
+if [ $do_clean -gt 0 ]; then
+	echo "* Purging local cache"
+	rm -rf "$tmp/repo-local"
+fi
 
-run_jobs "$use_packages"
+if [ $do_update -gt 0 ] || [ ! -s "$tmp/targets.lst" ]; then
+	echo "* Preparing metadata"
+	rm -f "$tmp/targets.lst" "$tmp/feeds.lst"
+	rm -rf "$tmp/repo-remote"/*/*/packages
+	fetch_remote_index >/dev/null
+fi
+
+if [ -n "$use_sources" ]; then
+	for src in $use_sources; do
+		for pkg in $(find_source_provided_pkgs "$src"); do
+			echo "* Selecting package $pkg for source $src"
+			use_packages="${use_packages:+$use_packages }$pkg"
+		done
+	done
+fi
+
+[ -n "$use_packages" ] && run_jobs $use_packages
