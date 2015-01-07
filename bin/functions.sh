@@ -1,7 +1,6 @@
-#DL_URL="https://downloads.openwrt.org/barrier_breaker/14.07"
-#DL_URL="file:///BB/sync/barrier_breaker/14.07"
-DL_URL="openwrt@downloads.openwrt.org:barrier_breaker/14.07"
-UL_URL="openwrt@downloads.openwrt.org:barrier_breaker/14.07"
+#MIRROR_URL="https://downloads.openwrt.org/barrier_breaker/14.07"
+#MIRROR_URL="file:///BB/sync/barrier_breaker/14.07"
+MIRROR_URL="openwrt@downloads.openwrt.org:barrier_breaker/14.07"
 
 IDENT="$HOME/.ssh/id_rsa_openwrt_rsync"
 
@@ -22,7 +21,7 @@ mirror_rsync() {
 		mkdir -p "$CACHE_DIR/mirror"
 		call_rsync -avz --delete -m \
 			--include='*/' --include="**/$PATTERN_SDK" --include="**/$PATTERN_FEED" --exclude='*' \
-			"$DL_URL/" "$CACHE_DIR/mirror/"
+			"$MIRROR_URL/" "$CACHE_DIR/mirror/"
 
 		touch "$CACHE_DIR/.mirrored"
 	fi
@@ -31,7 +30,7 @@ mirror_rsync() {
 mirror_http() {
 	if [ ! -d "$CACHE_DIR/mirror" ] || [ $do_update -gt 0 -a ! -e "$CACHE_DIR/.mirrored" ]; then
 		mkdir -p "$CACHE_DIR/mirror"
-		lftp -e "open $DL_URL/ && mirror -P 2 -vvv --use-cache --only-newer --no-empty-dirs --delete -I '$PATTERN_SDK' -I '$PATTERN_FEED' -x logs/ . $CACHE_DIR/mirror/ && exit"
+		lftp -e "open $MIRROR_URL/ && mirror -P 2 -vvv --use-cache --only-newer --no-empty-dirs --delete -I '$PATTERN_SDK' -I '$PATTERN_FEED' -x logs/ . $CACHE_DIR/mirror/ && exit"
 		touch "$CACHE_DIR/.mirrored"
 	fi
 }
@@ -41,7 +40,7 @@ mirror_file() {
 		mkdir -p "$CACHE_DIR/mirror"
 		rsync -av --delete -m \
 			--include='*/' --include="**/$PATTERN_SDK" --include="**/$PATTERN_FEED" --exclude='*' \
-			"${DL_URL#file:}/" "$CACHE_DIR/mirror/"
+			"${MIRROR_URL#file:}/" "$CACHE_DIR/mirror/"
 
 		touch "$CACHE_DIR/.mirrored"
 	fi
@@ -77,7 +76,7 @@ fetch_remote_index() {
 
 	echo "Fetching remote package indizes..."
 
-	case "$DL_URL" in
+	case "$MIRROR_URL" in
 		file:*)
 			mirror_file
 		;;
@@ -354,7 +353,7 @@ rsync_delete_remote() {
 rsync_files() {
 	local target="$1" line; shift
 
-	case "$UL_URL" in
+	case "$MIRROR_URL" in
 		http:*|https:*|ftp:*)
 			echo "* HTTP/FTP upload not supported!"
 			exit 0
