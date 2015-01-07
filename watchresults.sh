@@ -1,7 +1,7 @@
 #!/bin/bash
 
 watch -n 5 '
-	. ./bin/functions.sh
+	. ./shared/functions.sh
 
 	for target in $(fetch_remote_targets); do
 		echo -n "$target: "

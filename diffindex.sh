@@ -1,6 +1,6 @@
 #!/bin/bash
 
-. ./bin/functions.sh
+. ./shared/functions.sh
 
 for target in $(fetch_remote_targets); do
 	for feed in $(fetch_remote_feeds "$target"); do

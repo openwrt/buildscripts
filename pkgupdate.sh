@@ -1,6 +1,6 @@
 #!/bin/bash
 
-. ./bin/functions.sh
+. ./shared/functions.sh
 
 terminate() {
 	local jobs="$(jobs -p)"

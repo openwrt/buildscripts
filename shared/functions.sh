@@ -7,7 +7,7 @@ IDENT="$HOME/.ssh/id_rsa_openwrt_rsync"
 PATTERN_SDK="OpenWrt-SDK-*.tar.bz2"
 PATTERN_FEED="Packages.gz"
 
-CACHE_DIR="$HOME/relman/.cache"
+CACHE_DIR="$(readlink -f .)/.cache"
 
 N="
 "
@@ -295,7 +295,7 @@ patch_index_cmd() {
 		zcat "$idir/Packages.gz" > "$odir/Packages"
 	fi
 
-	./bin/patch-index.pl --index "$odir/Packages" "$@" > "$odir/Packages.$$"
+	./shared/patch-index.pl --index "$odir/Packages" "$@" > "$odir/Packages.$$"
 
 	mv "$odir/Packages.$$" "$odir/Packages"
 }

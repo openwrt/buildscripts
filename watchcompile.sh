@@ -1,8 +1,8 @@
 #!/bin/bash
 
-#watch "ps hww -o args | sed -ne 's, BUILD_VARIANT.*,,; s,^make -C package/feeds/,,p' | sort"
+. ./shared/functions.sh
 
-sdkdir="$(readlink -f .cache/sdk/)/"
+sdkdir="$(readlink -f $CACHE_DIR/sdk/)/"
 
 while true; do
 	out="$(
