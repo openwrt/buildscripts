@@ -342,7 +342,7 @@ rsync_delete_remote() {
 
 		if [ -n "$include" ]; then
 			mkdir -p "$CACHE_DIR/empty"
-			call_rsync -rv --delete $include --exclude="*" "$CACHE_DIR/empty/" "${UL_URL#file:}/$target/packages/$feed/" 2>&1 | \
+			call_rsync -rv --delete $include --exclude="*" "$CACHE_DIR/empty/" "${MIRROR_URL#file:}/$target/packages/$feed/" 2>&1 | \
 				grep "deleting " | while read line; do
 					echo " * [$slot:$target] rsync: $line"
 				done
@@ -363,7 +363,7 @@ rsync_files() {
 	echo " * [$slot:$target] Syncing files"
 
 	rsync_delete_remote "$target" "$@"
-	call_rsync -rv "$CACHE_DIR/repo-local/$target/packages/" "${UL_URL#file:}/$target/packages/" 2>&1 | \
+	call_rsync -rv "$CACHE_DIR/repo-local/$target/packages/" "${MIRROR_URL#file:}/$target/packages/" 2>&1 | \
 		grep "/" | while read line; do
 			echo " * [$slot:$target] rsync: $line"
 		done
