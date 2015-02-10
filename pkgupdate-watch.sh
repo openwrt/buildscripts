@@ -1,28 +1,29 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 . ./shared/functions.sh
 
-sdkdir="$(readlink -f $CACHE_DIR/sdk/)/"
+trap 'clear; exit 0' SIGINT SIGTERM
+
+clear
 
 while true; do
-	out="$(
-		date
-		grep -slE "^Uid:\s+$(id -u)\s" /proc/[0-9]*/status | while read pid; do
-			pid="${pid#/proc/}"
-			pid="${pid%/status}"
+	echo -en "\033[0;0f"
+	fetch_remote_targets | while read target; do (
+		cd "$CACHE_DIR/sdk/$target"
+		log="$(find logs/ -type f -name compile.txt -printf '%C@ %h\n' 2>/dev/null | \
+			sort -nr | sed -ne '1s/^[0-9.]\+ //p')"
 
-			cwd="$(readlink "/proc/$pid/cwd" 2>/dev/null)"
-			case "$cwd" in $sdkdir*)
-				cmd="$(cat "/proc/$pid/cmdline" 2>/dev/null | tr '\0' ' ' | head -n 1)"
-				#case "$cmd" in "make -C "*)
-					cwd="${cwd%%/build_dir/*}"
-					echo "[${cwd:${#sdkdir}}] ${cmd:0:72}"
-				#;; esac
-			;; esac
-		done | sort
-	)"
+		if [ -d "$log" ]; then
+			msg="$(tail -n1 "$log/compile.txt")"
+			if [ ${#msg} -gt 80 ]; then
+				msg="${msg:0:80}"
+			fi
+		else
+			log="-"
+			msg=""
+		fi
 
-	clear
-	echo "$out"
-	sleep 2
+		printf "\033[K%-20s %-16s %s\n" "[$target]" "[${log##*/}]" "$msg"
+	); done
+	sleep 1
 done
