@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 watch -n 5 '
 	. ./shared/functions.sh
