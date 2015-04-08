@@ -3,6 +3,7 @@
 use strict;
 use warnings;
 use Getopt::Long;
+use POSIX;
 
 my $index;
 my @add;
@@ -19,6 +20,8 @@ unless (defined($index) && -f $index && (@add || @remove))
 {
 	die "Usage: $0 --index <pkg index> --add <pkg> --remove <pkg>\n";
 }
+
+setlocale(LC_ALL, "C");
 
 sub pkg_basename
 {
