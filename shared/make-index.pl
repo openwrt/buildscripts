@@ -2,11 +2,13 @@
 
 use strict;
 use warnings;
+use POSIX;
 
 my $dir = $ARGV[0];
 
 die "Usage: $0 <package directory>\n" unless -d $dir;
 
+setlocale(LC_ALL, "C");
 
 sub pkg_metadata
 {
@@ -64,13 +66,21 @@ sub pkg_metadata
 	return $meta;
 }
 
+
+my @packages;
+
 if (opendir D, $dir)
 {
 	while (defined(my $e = readdir D))
 	{
 		next unless -f "$dir/$e" && $e =~ m{\.ipk$};
-		print pkg_metadata("$dir/$e");
+		push @packages, $e;
 	}
 
 	closedir D;
+}
+
+foreach my $package (sort @packages)
+{
+	print pkg_metadata("$dir/$package");
 }
