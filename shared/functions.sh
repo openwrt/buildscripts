@@ -128,6 +128,10 @@ prepare_sdk() {
 		rm -rf "$CACHE_DIR/sdk/$target/feeds"
 		ln -sf "$CACHE_DIR/feeds" "$CACHE_DIR/sdk/$target/feeds"
 
+		mkdir -p "$CACHE_DIR/ccache"
+		rm -rf "$CACHE_DIR/sdk/$target/staging_dir/target-"*"/ccache"
+		ln -sf "$CACHE_DIR/ccache" "$CACHE_DIR/sdk/$target/staging_dir/target-"*
+
 		(
 			cd "$CACHE_DIR/sdk/$target"
 			git init .
@@ -228,7 +232,7 @@ compile_sdk_packages() {
 			flock -x 9
 
 			cd "$CACHE_DIR/sdk/$target"
-			if ! make "package/$pkg/download" >/dev/null 2>/dev/null; then
+			if ! make "package/$pkg/download" BUILD_LOG=1 >/dev/null 2>/dev/null; then
 				echo " * [$slot:$target] make package/$pkg/download - FAILED!"
 			fi
 		) 9>"$CACHE_DIR/download.lock" 2>/dev/null
@@ -236,7 +240,11 @@ compile_sdk_packages() {
 		echo " * [$slot:$target] make package/$pkg/compile"
 		(
 			cd "$CACHE_DIR/sdk/$target"
-			if ! make "package/$pkg/compile" IGNORE_ERRORS=y >/dev/null 2>/dev/null; then
+			if ! make "package/$pkg/compile" \
+				BUILD_LOG=1 IGNORE_ERRORS=y \
+				CCACHE_COMPILERCHECK="%compiler% -dumpmachine; %compiler% -dumpversion" \
+				>/dev/null 2>/dev/null;
+			then
 				echo " * [$slot:$target] make package/$pkg/compile - FAILED!"
 			fi
 		)
