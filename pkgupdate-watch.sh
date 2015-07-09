@@ -9,25 +9,30 @@ clear
 while true; do
 	echo -en "\033[0;0f"
 	fetch_remote_targets | while read target; do (
-		cd "$CACHE_DIR/sdk/$target"
-		log="$(find logs/ -type f -name compile.txt -printf '%C@ %h\n' 2>/dev/null | \
-			sort -nr | sed -ne '1s/^[0-9.]\+ //p')"
+		if [ -d "$CACHE_DIR/sdk/$target" ]; then
+			cd "$CACHE_DIR/sdk/$target"
+			log="$(find logs/ -type f -name compile.txt -printf '%C@ %h\n' 2>/dev/null | \
+				sort -nr | sed -ne '1s/^[0-9.]\+ //p')"
 
-		if [ -d "$log" ]; then
-			d1=$(date +%s)
-			d2=$(date +%s -r "$log/compile.txt")
+			if [ -d "$log" ]; then
+				d1=$(date +%s)
+				d2=$(date +%s -r "$log/compile.txt")
 
-			if [ $(($d1 - $d2)) -gt 5 ]; then
-				log="- idle -"
-				msg=""
-			else
-				msg="$(tail -n1 "$log/compile.txt")"
-				if [ ${#msg} -gt 80 ]; then
-					msg="${msg:0:80}"
+				if [ $(($d1 - $d2)) -gt 5 ]; then
+					log="- idle -"
+					msg=""
+				else
+					msg="$(tail -n1 "$log/compile.txt")"
+					if [ ${#msg} -gt 80 ]; then
+						msg="${msg:0:80}"
+					fi
 				fi
+			else
+				log="- pending -"
+				msg=""
 			fi
 		else
-			log="- pending -"
+			log="- uninitialized -"
 			msg=""
 		fi
 
