@@ -191,7 +191,7 @@ install_sdk_feeds() {
 
 		if [ ! -s "feeds.conf" ]; then
 			if ! grep -sq " base " "feeds.conf.default"; then
-				sed -e '/oldpackages/ { p; s!oldpackages!base!; s!packages.git!openwrt.git! }' \
+				sed -e '/oldpackages/ { p; s!oldpackages!base!; s!packages.git!openwrt.git!; s!^#!! }' \
 					feeds.conf.default > feeds.conf
 			else
 				cp feeds.conf.default feeds.conf
