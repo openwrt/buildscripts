@@ -5,7 +5,7 @@ MIRROR_URL="openwrt@downloads.openwrt.org:barrier_breaker/14.07"
 IDENT="$HOME/.ssh/id_rsa_openwrt_rsync"
 
 PATTERN_SDK="OpenWrt-SDK-*.tar.bz2"
-PATTERN_FEED="Packages.gz"
+PATTERN_FEED="Packages.*"
 
 CACHE_DIR="$(readlink -f .)/.cache"
 
