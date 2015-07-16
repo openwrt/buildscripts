@@ -309,6 +309,19 @@ patch_index_cmd() {
 	mv "$odir/Packages.$$" "$odir/Packages"
 }
 
+sign_index_cmd() {
+	local target="$1" feed="$2"; shift; shift
+	local odir="$CACHE_DIR/repo-local/$target/packages/$feed"
+
+	if [ -x "$CACHE_DIR/usign.elf" ] && [ -s "$odir/Packages" ]; then (
+		cd "$odir"
+		{
+			echo "untrusted comment: signing key"
+			echo "$SIGNING_KEY"
+		} | "$CACHE_DIR/usign.elf" -S -m Packages -s -
+	); fi
+}
+
 patch_indexes() {
 	local target="$1" feed pkg dir; shift
 
@@ -330,6 +343,9 @@ patch_indexes() {
 		dir="$CACHE_DIR/repo-local/$target/packages/$feed"
 		if [ -s "$dir/Packages" ]; then
 			gzip -c -9 "$dir/Packages" > "$dir/Packages.gz"
+		fi
+		if [ -n "$SIGNING_KEY" ]; then
+			sign_index_cmd "$target" "$feed"
 		fi
 	done
 }
@@ -378,11 +394,69 @@ rsync_files() {
 		done
 }
 
+prepare_usign() {
+	if [ ! -x "$CACHE_DIR/usign.elf" ]; then
+		echo "* Extracting usign executable..."
+
+		find "$CACHE_DIR/mirror/" -name "$PATTERN_SDK" | head -n1 | \
+			xargs tar -Ox --wildcards '*/staging_dir/host/bin/usign' -jf \
+				> "$CACHE_DIR/usign.elf"
+
+		if [ -s "$CACHE_DIR/usign.elf" ] && \
+			chmod 0700 "$CACHE_DIR/usign.elf" && \
+			"$CACHE_DIR/usign.elf" 2>&1 | grep -q secret;
+		then
+			return 0
+		fi
+
+		rm -f "$CACHE_DIR/usign.elf"
+		echo "* Unable to extract a working usign executable!" >&2
+		exit 1
+	fi
+}
+
+test_signing() {
+	local has_signing="$(find "$CACHE_DIR/mirror/" -type f -name Packages.sig | head -n1)"
+
+	if [ -z "$has_signing" ]; then
+		return
+	fi
+
+	prepare_usign
+
+	echo "+--------------------------------------------------+"
+	echo "| SIGNING KEY REQUIRED                             |"
+	echo "| Paste the key below and press enter to continue! |"
+	echo "+--------------------------------------------------+"
+
+	read -p "Signing key > " -s SIGNING_KEY
+	echo ""
+
+	if [ -z "$SIGNING_KEY" ]; then
+		echo "Key not provided, aborting." >&2
+		exit 1
+	fi
+
+	local fingerprint="$({
+		echo "untrusted comment: signing key"
+		echo "$SIGNING_KEY"
+	} | "$CACHE_DIR/usign.elf" -F -s - 2>/dev/null)"
+
+	if [ -z "$fingerprint" ]; then
+		echo "Invalid key provided, aborting." >&2
+		exit 1
+	fi
+
+	echo "Using key with fingerprint $fingerprint"
+}
+
 run_jobs() {
 	local targets=$(fetch_remote_targets)
 	local target slot count job
 
 	#echo "* Compiling packages"
+
+	test_signing
 
 	for slot in $(seq 0 $((num_jobs-1))); do (
 		count=1; for target in $targets; do
