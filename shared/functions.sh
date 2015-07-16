@@ -13,7 +13,8 @@ N="
 "
 
 call_rsync() {
-	LC_ALL=C rsync ${IDENT+-e "ssh -o IdentitiesOnly=yes -o IdentityFile=$IDENT"} "$@"
+	LC_ALL=C rsync --bwlimit=8000 \
+		${IDENT+-e "ssh -o IdentitiesOnly=yes -o IdentityFile=$IDENT -T -c arcfour -o Compression=no"} "$@"
 }
 
 mirror_rsync() {
