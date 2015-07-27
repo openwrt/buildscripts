@@ -1,0 +1,42 @@
+# This is an example configuration for the release management scripts.
+# Rename the file to `relman.cfg` and adjust the values as needed.
+
+# Common release properties
+release_tag  = CC 15.05-rc3
+release_name = Chaos Calmer 15.05 Release Candicate 3
+release_url  = openwrt@downloads.openwrt.org:chaos_calmer/15.05-rc3
+# release_url = https://downloads.openwrt.org/chaos_calmer/15.05-rc3
+# release_url = file:///CC/sync/chaos_calmer/15.05-rc3
+
+# Cache/build directory
+cache_dir = $PWD/.cache
+
+# SSH identity (used for rsync)
+ssh_ident = $HOME/.ssh/id_rsa_openwrt_rsync
+
+# File glob patterns (used for rsync/lftp)
+pattern{sdk}  = OpenWrt-SDK-*.tar.bz2
+pattern{feed} = Packages.*
+
+# Recipient list for package update notifications
+recipients_standard[0] = openwrt-devel@lists.openwrt.org
+recipients_standard[1] = openwrt-users@lists.openwrt.org
+
+# Recipient list for security critical updates
+recipients_security[0] = openwrt-security-announce@lists.openwrt.org
+recipients_security[1] = openwrt-devel@lists.openwrt.org
+recipients_security[2] = openwrt-users@lists.openwrt.org
+
+# Mapping of feed names to respective online source browser
+commitlink{base}       = http://git.openwrt.org/?p=15.05/openwrt.git;a=commit;h=%s
+commitlink{luci}       = https://github.com/openwrt/luci/commit/%s
+commitlink{management} = https://github.com/openwrt-management/packages/commit/%s
+commitlink{packages}   = https://github.com/openwrt/packages/commit/%s
+commitlink{routing}    = https://github.com/openwrt-routing/packages/commit/%s
+commitlink{telephony}  = https://github.com/openwrt/telephony/commit/%s
+
+# SMTP settings for mail notifications
+smtp{from} = example@openwrt.org
+smtp{host} = mail.example.org
+smtp{user} = example
+smtp{pass} = secret
