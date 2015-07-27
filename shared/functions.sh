@@ -452,7 +452,9 @@ run_jobs() {
 
 	#echo "* Compiling packages"
 
-	test_signing
+	if [ $do_index -gt 0 ]; then
+		test_signing
+	fi
 
 	for slot in $(seq 0 $((num_jobs-1))); do (
 		count=1; for target in $targets; do
