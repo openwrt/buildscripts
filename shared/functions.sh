@@ -1,13 +1,9 @@
-#MIRROR_URL="https://downloads.openwrt.org/barrier_breaker/14.07"
-#MIRROR_URL="file:///BB/sync/barrier_breaker/14.07"
-MIRROR_URL="openwrt@downloads.openwrt.org:barrier_breaker/14.07"
+[ -f shared/relman.cfg ] || {
+	echo "Please create shared/relman.cfg" >&2
+	exit 1
+}
 
-IDENT="$HOME/.ssh/id_rsa_openwrt_rsync"
-
-PATTERN_SDK="OpenWrt-SDK-*.tar.bz2"
-PATTERN_FEED="Packages.*"
-
-CACHE_DIR="$(readlink -f .)/.cache"
+eval $(perl shared/config.pm)
 
 N="
 "
