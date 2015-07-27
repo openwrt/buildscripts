@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+[ -f shared/functions.sh ] || {
+	echo "Please execute as ./${0##*/}" >&2
+	exit 1
+}
+
 . ./shared/functions.sh
 
 for target in $(fetch_remote_targets); do
