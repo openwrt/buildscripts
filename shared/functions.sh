@@ -10,7 +10,7 @@ N="
 
 call_rsync() {
 	LC_ALL=C rsync --bwlimit=8000 \
-		${IDENT+-e "ssh -o IdentitiesOnly=yes -o IdentityFile=$IDENT -T -c arcfour -o Compression=no"} "$@"
+		${SSH_IDENT+-e "ssh -o IdentitiesOnly=yes -o IdentityFile=$SSH_IDENT -T -c arcfour -o Compression=no"} "$@"
 }
 
 mirror_rsync() {
@@ -18,7 +18,7 @@ mirror_rsync() {
 		mkdir -p "$CACHE_DIR/mirror"
 		call_rsync -avz --delete -m \
 			--include='*/' --include="**/$PATTERN_SDK" --include="**/$PATTERN_FEED" --exclude='*' \
-			"$MIRROR_URL/" "$CACHE_DIR/mirror/"
+			"$RELEASE_URL/" "$CACHE_DIR/mirror/"
 
 		touch "$CACHE_DIR/.mirrored"
 	fi
@@ -27,7 +27,7 @@ mirror_rsync() {
 mirror_http() {
 	if [ ! -d "$CACHE_DIR/mirror" ] || [ $do_update -gt 0 -a ! -e "$CACHE_DIR/.mirrored" ]; then
 		mkdir -p "$CACHE_DIR/mirror"
-		lftp -e "open $MIRROR_URL/ && mirror -P 2 -vvv --use-cache --only-newer --no-empty-dirs --delete -I '$PATTERN_SDK' -I '$PATTERN_FEED' -x logs/ . $CACHE_DIR/mirror/ && exit"
+		lftp -e "open $RELEASE_URL/ && mirror -P 2 -vvv --use-cache --only-newer --no-empty-dirs --delete -I '$PATTERN_SDK' -I '$PATTERN_FEED' -x logs/ . $CACHE_DIR/mirror/ && exit"
 		touch "$CACHE_DIR/.mirrored"
 	fi
 }
@@ -37,7 +37,7 @@ mirror_file() {
 		mkdir -p "$CACHE_DIR/mirror"
 		rsync -av --delete -m \
 			--include='*/' --include="**/$PATTERN_SDK" --include="**/$PATTERN_FEED" --exclude='*' \
-			"${MIRROR_URL#file:}/" "$CACHE_DIR/mirror/"
+			"${RELEASE_URL#file:}/" "$CACHE_DIR/mirror/"
 
 		touch "$CACHE_DIR/.mirrored"
 	fi
@@ -73,7 +73,7 @@ fetch_remote_index() {
 
 	echo "Fetching remote package indizes..."
 
-	case "$MIRROR_URL" in
+	case "$RELEASE_URL" in
 		file:*)
 			mirror_file
 		;;
@@ -363,7 +363,7 @@ rsync_delete_remote() {
 
 		if [ -n "$include" ]; then
 			mkdir -p "$CACHE_DIR/empty"
-			call_rsync -rv --delete $include --exclude="*" "$CACHE_DIR/empty/" "${MIRROR_URL#file:}/$target/packages/$feed/" 2>&1 | \
+			call_rsync -rv --delete $include --exclude="*" "$CACHE_DIR/empty/" "${RELEASE_URL#file:}/$target/packages/$feed/" 2>&1 | \
 				grep "deleting " | while read line; do
 					echo " * [$slot:$target] rsync: $line"
 				done
@@ -374,7 +374,7 @@ rsync_delete_remote() {
 rsync_files() {
 	local target="$1" line; shift
 
-	case "$MIRROR_URL" in
+	case "$RELEASE_URL" in
 		http:*|https:*|ftp:*)
 			echo "* HTTP/FTP upload not supported!"
 			exit 0
@@ -384,10 +384,12 @@ rsync_files() {
 	echo " * [$slot:$target] Syncing files"
 
 	rsync_delete_remote "$target" "$@"
-	call_rsync -rv "$CACHE_DIR/repo-local/$target/packages/" "${MIRROR_URL#file:}/$target/packages/" 2>&1 | \
+	call_rsync -rv "$CACHE_DIR/repo-local/$target/packages/" "${RELEASE_URL#file:}/$target/packages/" 2>&1 | \
 		grep "/" | while read line; do
 			echo " * [$slot:$target] rsync: $line"
 		done
+
+	rm -r "$CACHE_DIR/repo-local/$target/packages/"
 }
 
 prepare_usign() {
