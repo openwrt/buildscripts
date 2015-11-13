@@ -126,8 +126,13 @@ prepare_sdk() {
 		ln -sf "$CACHE_DIR/feeds" "$CACHE_DIR/sdk/$target/feeds"
 
 		mkdir -p "$CACHE_DIR/ccache"
-		rm -rf "$CACHE_DIR/sdk/$target/staging_dir/target-"*"/ccache"
-		ln -sf "$CACHE_DIR/ccache" "$CACHE_DIR/sdk/$target/staging_dir/target-"*
+
+		local dir
+		for dir in "$CACHE_DIR/sdk/$target/staging_dir/host" \
+		           "$CACHE_DIR/sdk/$target/staging_dir/target-"*; do
+			rm -rf "$dir/ccache"
+			ln -sf "$CACHE_DIR/ccache" "$dir/ccache"
+		done
 
 		(
 			cd "$CACHE_DIR/sdk/$target"
@@ -226,13 +231,11 @@ compile_sdk_packages() {
 	done | sort -u | while read pkg; do
 		echo " * [$slot:$target] make package/$pkg/download"
 		(
-			flock -x 9
-
 			cd "$CACHE_DIR/sdk/$target"
-			if ! make "package/$pkg/download" BUILD_LOG=1 >/dev/null 2>/dev/null; then
+			if ! flock "$CACHE_DIR/download.lock" make "package/$pkg/download" BUILD_LOG=1 >/dev/null 2>/dev/null; then
 				echo " * [$slot:$target] make package/$pkg/download - FAILED!"
 			fi
-		) 9>"$CACHE_DIR/download.lock" 2>/dev/null
+		) 2>/dev/null
 
 		echo " * [$slot:$target] make package/$pkg/compile"
 		(
