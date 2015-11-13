@@ -506,8 +506,8 @@ if ($do_check)
 		exit(0);
 	}
 
-	printf("./pkgupdate-build.sh -cubi -s %s\n", join(' -s ', @source_pkgs));
-	printf("./pkgupdate-check.pl --since %s%s --send\n",
+	printf("./pkgupdate-build.sh -ubi -s %s\n", join(' -s ', @source_pkgs));
+	printf("./pkgupdate-report.pl --since %s%s --send\n",
 		$changetime,
 		@use_packages ? ' --package ' . join(' --package ', @use_packages) : '');
 }
