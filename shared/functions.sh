@@ -191,12 +191,10 @@ install_sdk_feeds() {
 		cd "$CACHE_DIR/sdk/$target"
 
 		if [ ! -s "feeds.conf" ]; then
-			if ! grep -sq " base " "feeds.conf.default"; then
-				sed -e '/oldpackages/ { p; s!oldpackages!base!; s!packages.git!openwrt.git!; s!^#!! }' \
-					feeds.conf.default > feeds.conf
-			else
-				cp feeds.conf.default feeds.conf
+			if ! grep -sq " base " "feeds.conf.default" && [ -n "$RELEASE_FEED" ]; then
+				echo "src-git-full base $RELEASE_FEED" > feeds.conf
 			fi
+			sed -e 's#^src-git #src-git-full #g' feeds.conf.default >> feeds.conf
 		fi
 
 		./scripts/feeds update >/dev/null
