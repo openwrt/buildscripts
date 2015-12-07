@@ -2,12 +2,12 @@
 # Rename the file to `relman.cfg` and adjust the values as needed.
 
 # Common release properties
-release_tag  = CC 15.05-rc3
-release_name = Chaos Calmer 15.05 Release Candicate 3
+release_tag  = CC 15.05
+release_name = Chaos Calmer 15.05
 release_feed = http://git.openwrt.org/15.05/openwrt.git
-release_url  = openwrt@downloads.openwrt.org:chaos_calmer/15.05-rc3
-# release_url = https://downloads.openwrt.org/chaos_calmer/15.05-rc3
-# release_url = file:///CC/sync/chaos_calmer/15.05-rc3
+release_url  = openwrt@downloads.openwrt.org:chaos_calmer/15.05
+# release_url = https://downloads.openwrt.org/chaos_calmer/15.05
+# release_url = file:///CC/sync/chaos_calmer/15.05
 
 # Cache/build directory
 cache_dir = $PWD/.cache
