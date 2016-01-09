@@ -395,9 +395,14 @@ sub generate_pkg_log {
 		$out .= "\n";
 	}
 
-	if (@refs > 0)
+	if (@use_ref > 0 || @refs > 0 || @cve > 0)
 	{
 		$out .= sprintf("\nREFERENCES\n\n");
+
+		foreach my $cve (@cve)
+		{
+			$out .= sprintf(" * http://cve.mitre.org/cgi-bin/cvename.cgi?name=%s\n", $cve);
+		}
 
 		foreach my $link (@use_ref, @refs)
 		{
